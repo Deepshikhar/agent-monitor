@@ -216,7 +216,7 @@ def detect_failure(events: List[dict]) -> Tuple[bool, str]:
     )
     rate = failures / len(recent)
 
-    if rate > 0.60:
+    if rate > 0.50:
         return True, f"High failure rate: {rate:.0%} of last {len(recent)} events failed"
 
     return False, ""

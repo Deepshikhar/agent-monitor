@@ -53,8 +53,8 @@ def send_event(
         print(f"  [{step:02d}] {status_icon} {action:<14} | {tag}")
     except Exception as e:
         print(f"  [{step:02d}] ERROR: {e}")
-    time.sleep(delay + random.uniform(0, 0.05))
-    # time.sleep(0.01)
+    # time.sleep(delay + random.uniform(0, 0.05))
+    time.sleep(0.01)
 
 
 # ---------------------------------------------------------------------------
