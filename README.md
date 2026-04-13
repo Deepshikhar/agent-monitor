@@ -110,20 +110,49 @@ similarity = 0.4 × (action_type_match) + 0.6 × jaccard(input_tokens_A, input_t
 
 ### Drift Detection
 
-**Algorithm**: Compare keyword distributions between first and second halves of session.
-
+**Algorithm**: Compare both semantic content *and* workspace context between the first and second halves of a session.
 ```
-overlap = jaccard(tokens(first_half), tokens(second_half))
+token_overlap = jaccard(tokens(first_half), tokens(second_half))
+path_overlap = jaccard(path_roots(first_half), path_roots(second_half))
 ```
+- **Tokens** are extracted from `input + output` (stop-words removed).
+- **Path roots** are extracted from file paths (e.g., `auth/... → auth`, `pipeline/... → pipeline`).
 
-Tokens extracted from `input + output` fields, stop-words removed.
+---
 
-**Threshold**: overlap < **0.20**
+**Detection Logic**
 
-Also flags dominant action-type shift (e.g., `llm_call` dominant in first half, `run_command` dominant in second).
+Drift is flagged only when **semantic shift AND contextual shift** are present:
 
-**Why 0.20?** Normal task progression naturally shifts vocabulary (setup → test → deploy). Genuine drift (auth work → ETL work) shows < 10% token overlap. 0.20 leaves room for gradual evolution without missing hard pivots.
+- **Strong Drift**
+  - `token_overlap < 0.10`
+  - `path_overlap < 0.25`
 
+- **Moderate Drift**
+  - `token_overlap < 0.15`
+  - `path_overlap < 0.20`
+  - dominant action type changes (e.g., `read_file → write_file`)
+  - action distribution overlap is low
+
+---
+
+**Why This Change?**
+
+Earlier logic used only token overlap (`< 0.20`), which caused **false positives**:
+- Normal workflows (setup → coding → testing → commit) naturally change vocabulary
+- This incorrectly flagged healthy sessions as drifting
+
+---
+
+**Final Rationale**
+
+- **Token overlap** captures *semantic intent change*
+- **Path overlap** captures *context / project shift*
+- Combining both ensures:
+  - ✅ Real drift is detected (e.g., `auth/ → pipeline/`)
+  - ❌ Normal task progression is NOT flagged as drift
+
+- This makes drift detection more aligned with real-world agent behavior.
 ---
 
 ### Failure Detection

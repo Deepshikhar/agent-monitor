@@ -103,13 +103,38 @@ def detect_loop(events: List[dict]) -> Tuple[bool, str]:
 # Drift Detection
 # ---------------------------------------------------------------------------
 
+PATH_RE = re.compile(
+    r"\b(?:[\w.-]+/)+[\w.-]+\b|\b[\w.-]+\.(?:py|md|ya?ml|json|toml|txt|tsx?|jsx?)\b"
+)
+
+def extract_path_roots(evts):
+    roots = set()
+    for e in evts:
+        blobs = [
+            e.get("input", "") or "",
+            e.get("output", "") or "",
+            (e.get("metadata", {}) or {}).get("file", "") or "",
+        ]
+        for blob in blobs:
+            for p in PATH_RE.findall(blob):
+                p = p.strip("/ ")
+                if "/" in p:
+                    roots.add(p.split("/", 1)[0].lower())
+                elif "." in p:
+                    roots.add(p.rsplit(".", 1)[0].lower())
+                else:
+                    roots.add(p.lower())
+    return roots
+
+
 def detect_drift(events: List[dict]) -> Tuple[bool, str]:
     """
-    Compare keyword distributions from first vs second half of session.
-    Jaccard overlap < 0.20 on combined input+output tokens signals drift.
-    Also reports action-type shift if dominant action changes between halves.
+    Detect true intent drift, not normal workflow phase changes.
+    Drift requires:
+      - low semantic overlap between halves, AND
+      - a meaningful shift in file/path roots, OR a strong behavior shift
     """
-    if len(events) < 6:
+    if len(events) < 8:
         return False, ""
 
     mid = len(events) // 2
@@ -119,7 +144,7 @@ def detect_drift(events: List[dict]) -> Tuple[bool, str]:
     def extract_tokens(evts):
         tokens = set()
         for e in evts:
-            tokens |= tokenize(e.get("input", "") + " " + e.get("output", ""))
+            tokens |= tokenize((e.get("input", "") or "") + " " + (e.get("output", "") or ""))
         return tokens
 
     first_tokens = extract_tokens(first_half)
@@ -128,16 +153,28 @@ def detect_drift(events: List[dict]) -> Tuple[bool, str]:
     if len(first_tokens) < 4 or len(second_tokens) < 4:
         return False, ""
 
-    overlap = jaccard_similarity(first_tokens, second_tokens)
+    token_overlap = jaccard_similarity(first_tokens, second_tokens)
 
-    
-    if overlap < 0.20:
-        first_actions = Counter(e.get("action") for e in first_half)
-        second_actions = Counter(e.get("action") for e in second_half)
-        first_dom = max(first_actions, key=first_actions.get, default=None)
-        second_dom = max(second_actions, key=second_actions.get, default=None)
+    first_roots = extract_path_roots(first_half)
+    second_roots = extract_path_roots(second_half)
+    path_overlap = (
+        jaccard_similarity(first_roots, second_roots)
+        if first_roots and second_roots
+        else 1.0
+    )
 
-        msg = f"Drift detected: topic overlap dropped to {overlap:.0%}"
+    first_actions = Counter(e.get("action") for e in first_half)
+    second_actions = Counter(e.get("action") for e in second_half)
+    first_dom = max(first_actions, key=first_actions.get, default=None)
+    second_dom = max(second_actions, key=second_actions.get, default=None)
+
+    action_overlap = jaccard_similarity(set(first_actions.keys()), set(second_actions.keys()))
+
+    strong_drift = token_overlap < 0.10 and path_overlap < 0.25
+    moderate_drift = token_overlap < 0.15 and path_overlap < 0.20 and action_overlap < 0.5 and first_dom != second_dom
+
+    if strong_drift or moderate_drift:
+        msg = f"Drift detected: topic overlap dropped to {token_overlap:.0%}"
         if first_dom != second_dom:
             msg += f" (activity shifted: '{first_dom}' → '{second_dom}')"
         return True, msg
