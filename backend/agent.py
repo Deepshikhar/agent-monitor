@@ -39,6 +39,7 @@ def send_event(
     payload = {
         "session_id": session_id,
         "timestamp": time.time(),
+        # "timestamp": time.time() - random.randint(0, 5),
         "step": step,
         "action": action,
         "input": input_text,
@@ -53,6 +54,7 @@ def send_event(
     except Exception as e:
         print(f"  [{step:02d}] ERROR: {e}")
     time.sleep(delay + random.uniform(0, 0.05))
+    # time.sleep(0.01)
 
 
 # ---------------------------------------------------------------------------

@@ -71,7 +71,7 @@ class EventStorage:
             cursor = conn.execute(
                 """SELECT session_id, timestamp, step, action, input, output, metadata
                    FROM events WHERE session_id = ?
-                   ORDER BY timestamp ASC, step ASC""",
+                   ORDER BY step ASC, step ASC""",
                 (session_id,),
             )
             rows = cursor.fetchall()
